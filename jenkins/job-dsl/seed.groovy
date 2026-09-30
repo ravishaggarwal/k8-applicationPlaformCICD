@@ -1,4 +1,4 @@
-def repo = 'https://github.com/ravishaggarwal/auspost-devsecops-reference.git'
+def repo = 'https://github.com/ravishaggarwal/AusPost-Application.git'
 
 pipelineJob('auspost-health-ci') {
   description('CI: build, test, SonarQube, Snyk SAST/SCA/container scan, Docker and JFrog push.')
