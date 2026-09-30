@@ -1,0 +1,151 @@
+pipeline {
+  agent { label 'docker' }
+
+  options {
+    timestamps()
+    disableConcurrentBuilds()
+    buildDiscarder(logRotator(numToKeepStr: '30'))
+    skipDefaultCheckout(true)
+  }
+
+  parameters {
+    string(name: 'APP_VERSION', defaultValue: '1.0.0', description: 'Image/application version')
+  }
+
+  environment {
+    APP_NAME = 'auspost-health'
+    JFROG_PROJECT = 'AusPostJrog'
+    SNYK_ORG = 'AusPostSynkTenancy'
+    SONARQUBE_SERVER = 'AusPostSonarQube'
+  }
+
+  stages {
+    stage('Checkout') {
+      steps { checkout scm }
+    }
+
+    stage('Build') {
+      steps {
+        dir('application') {
+          sh './gradlew clean assemble -x componentTest'
+        }
+      }
+    }
+
+    stage('Unit Tests') {
+      steps {
+        dir('application') {
+          sh './gradlew test jacocoTestReport'
+        }
+      }
+      post {
+        always {
+          junit allowEmptyResults: true, testResults: 'application/build/test-results/test/*.xml'
+          archiveArtifacts allowEmptyArchive: true, artifacts: 'application/build/reports/jacoco/test/jacocoTestReport.xml'
+        }
+      }
+    }
+
+    stage('Component Tests') {
+      steps {
+        dir('application') {
+          sh './gradlew componentTest'
+        }
+      }
+      post {
+        always {
+          junit allowEmptyResults: true, testResults: 'application/build/test-results/componentTest/*.xml'
+        }
+      }
+    }
+
+    stage('SonarQube') {
+      steps {
+        withSonarQubeEnv("${SONARQUBE_SERVER}") {
+          withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')]) {
+            dir('application') {
+              sh './gradlew test jacocoTestReport sonar -Dsonar.projectKey=auspost-health -Dsonar.projectName=auspost-health -Dsonar.token=$SONAR_TOKEN'
+            }
+          }
+        }
+      }
+    }
+
+    stage('Snyk SAST/SCA') {
+      steps {
+        withCredentials([
+          string(credentialsId: 'vault-approle-role-id', variable: 'VAULT_ROLE_ID'),
+          string(credentialsId: 'vault-approle-secret-id', variable: 'VAULT_SECRET_ID')
+        ]) {
+          sh '''
+            set -e
+            export VAULT_TOKEN="$(vault write -field=token auth/approle/login role_id="$VAULT_ROLE_ID" secret_id="$VAULT_SECRET_ID")"
+            export SNYK_TOKEN="$(vault kv get -field=token secret/jenkins/snyk)"
+            snyk auth "$SNYK_TOKEN"
+            snyk code test --org="$SNYK_ORG" --severity-threshold=high
+            snyk test --org="$SNYK_ORG" --file=application/build.gradle --package-manager=gradle --severity-threshold=high
+          '''
+        }
+      }
+    }
+
+    stage('Docker Build') {
+      steps {
+        sh '''
+          set -e
+          docker build --build-arg APP_VERSION="$APP_VERSION"             -f container/Dockerfile             -t "$JFROG_PROJECT/$APP_NAME:$APP_VERSION" .
+        '''
+      }
+    }
+
+    stage('Snyk Container Scan') {
+      steps {
+        withCredentials([string(credentialsId: 'snyk-token', variable: 'SNYK_TOKEN')]) {
+          sh '''
+            set -e
+            snyk auth "$SNYK_TOKEN"
+            snyk container test "$JFROG_PROJECT/$APP_NAME:$APP_VERSION"               --org="$SNYK_ORG" --severity-threshold=high
+          '''
+        }
+      }
+    }
+
+    stage('Push JFrog') {
+      steps {
+        withCredentials([usernamePassword(
+          credentialsId: 'jfrog-credentials',
+          usernameVariable: 'JFROG_USER',
+          passwordVariable: 'JFROG_PASSWORD'
+        )]) {
+          sh '''
+            set -e
+            echo "$JFROG_PASSWORD" | docker login jfrog.example.com -u "$JFROG_USER" --password-stdin
+            docker tag "$JFROG_PROJECT/$APP_NAME:$APP_VERSION"               "jfrog.example.com/$JFROG_PROJECT/$APP_NAME:$APP_VERSION"
+            docker push "jfrog.auspost.com/$JFROG_PROJECT/$APP_NAME:$APP_VERSION"
+          '''
+        }
+      }
+    }
+
+    stage('Trigger CD - DEV') {
+      when { branch 'main' }
+      steps {
+        withCredentials([string(credentialsId: 'acm-certificate-arn', variable: 'ACM_CERTIFICATE_ARN')]) {
+          build job: 'auspost-health-cd',
+            wait: false,
+            parameters: [
+              string(name: 'ENVIRONMENT', value: 'dev'),
+              string(name: 'APP_VERSION', value: params.APP_VERSION),
+              string(name: 'ACM_CERTIFICATE_ARN', value: ACM_CERTIFICATE_ARN)
+            ]
+        }
+      }
+    }
+  }
+
+  post {
+    always {
+      sh 'docker image prune -f || true'
+    }
+  }
+}
