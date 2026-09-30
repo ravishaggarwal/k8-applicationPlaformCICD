@@ -1,0 +1,51 @@
+pipeline {
+  agent { label 'kubernetes-deployer' }
+
+  parameters {
+    string(name: 'CLUSTER_NAME', defaultValue: 'auspost-eks')
+    string(name: 'AWS_REGION', defaultValue: 'ap-southeast-2')
+  }
+
+  stages {
+    stage('Checkout') {
+      steps { checkout scm }
+    }
+
+    stage('Terraform Validate') {
+      steps {
+        dir('terraform') {
+          sh 'terraform fmt -check -recursive'
+          sh 'terraform init -backend=false'
+          sh 'terraform validate'
+        }
+      }
+    }
+
+    stage('Terraform Plan') {
+      steps {
+        dir('terraform') {
+          sh 'terraform plan -out=tfplan'
+        }
+      }
+    }
+
+    stage('Apply') {
+      when { branch 'main' }
+      input { message 'Apply AWS platform changes?' }
+      steps {
+        dir('terraform') {
+          sh 'terraform apply -auto-approve tfplan'
+        }
+      }
+    }
+
+    stage('Kubernetes Access') {
+      steps {
+        sh '''
+          aws eks update-kubeconfig --region "$AWS_REGION" --name "$CLUSTER_NAME"
+          kubectl get nodes
+        '''
+      }
+    }
+  }
+}
