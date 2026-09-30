@@ -121,7 +121,7 @@ pipeline {
             set -e
             echo "$JFROG_PASSWORD" | docker login jfrog.example.com -u "$JFROG_USER" --password-stdin
             docker tag "$JFROG_PROJECT/$APP_NAME:$APP_VERSION"               "jfrog.example.com/$JFROG_PROJECT/$APP_NAME:$APP_VERSION"
-            docker push "jfrog.example.com/$JFROG_PROJECT/$APP_NAME:$APP_VERSION"
+            docker push "jfrog.auspost.com/$JFROG_PROJECT/$APP_NAME:$APP_VERSION"
           '''
         }
       }

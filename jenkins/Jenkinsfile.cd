@@ -14,7 +14,7 @@ pipeline {
 
   environment {
     APP_NAME = 'auspost-health'
-    JFROG_REGISTRY = 'jfrog.example.com'
+    JFROG_REGISTRY = 'jfrog.auspost.com'
     JFROG_PROJECT = 'AusPostJrog'
     CLUSTER_NAME = 'auspost-eks'
     AWS_REGION = 'ap-southeast-2'
@@ -37,23 +37,6 @@ pipeline {
             set -e
             echo "$JFROG_PASSWORD" | docker login "$JFROG_REGISTRY" -u "$JFROG_USER" --password-stdin
             docker pull "$JFROG_REGISTRY/$JFROG_PROJECT/$APP_NAME:$APP_VERSION"
-          '''
-        }
-      }
-    }
-
-    stage('Fetch Vault Deployment Values') {
-      steps {
-        withCredentials([
-          string(credentialsId: 'vault-approle-role-id', variable: 'VAULT_ROLE_ID'),
-          string(credentialsId: 'vault-approle-secret-id', variable: 'VAULT_SECRET_ID')
-        ]) {
-          sh '''
-            set -e
-            export VAULT_TOKEN="$(vault write -field=token auth/approle/login role_id="$VAULT_ROLE_ID" secret_id="$VAULT_SECRET_ID")"
-            export VAULT_ENVIRONMENT="$ENVIRONMENT"
-            ./scripts/vault-to-helm-values.sh
-            echo "Vault application and resource configuration retrieved for $ENVIRONMENT"
           '''
         }
       }
