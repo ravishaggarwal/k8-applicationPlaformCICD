@@ -10,6 +10,8 @@ pipeline {
     choice(name: 'ENVIRONMENT', choices: ['dev', 'sit1', 'sit4', 'perf', 'prod'], description: 'Deployment environment')
     string(name: 'APP_VERSION', defaultValue: '1.0.0', description: 'Image tag produced by CI')
     string(name: 'ACM_CERTIFICATE_ARN', defaultValue: '', description: 'ACM certificate ARN from Terraform')
+    string(name: 'PLATFORM_BRANCH', defaultValue: 'main')
+    string(name: 'IAC_BRANCH',defaultValue: 'main')
   }
 
   environment {
@@ -42,6 +44,24 @@ pipeline {
       }
     }
 
+    stage('Checkout Kubernetes Platform') {
+      steps {
+          dir('platform') {
+              git branch: 'feature/us00xx-draftframework',
+                  url: 'https://github.com/ravishaggarwal/AusPost-platformKubernetes.git'
+          }
+        }
+    }
+
+    stage('Checkout AWS IaC') {
+        steps {
+            dir('aws-iac') { 
+                git branch: params.IAC_BRANCH,
+                    url: 'https://github.com/ravishaggarwal/AusPost-aws-iac.git'
+            }
+        }
+      }
+
     stage('Deploy') {
       steps {
         withCredentials([
@@ -54,30 +74,86 @@ pipeline {
             usernameVariable: 'JFROG_USER',
             passwordVariable: 'JFROG_PASSWORD')
         ]) {
-          sh '''
-            set -e
-            test -n "$ACM_CERTIFICATE_ARN"
+           dir('platform') {
+              sh '''
+                set -e
+                test -n "$ACM_CERTIFICATE_ARN"
 
-            aws eks update-kubeconfig --region "$AWS_REGION" --name "$CLUSTER_NAME"
+                aws eks update-kubeconfig --region "$AWS_REGION" --name "$CLUSTER_NAME"
 
-            kubectl create namespace "auspost-$ENVIRONMENT"               --dry-run=client -o yaml | kubectl apply -f -
+                kubectl create namespace "auspost-$ENVIRONMENT"               --dry-run=client -o yaml | kubectl apply -f -
 
-            kubectl create secret docker-registry jfrog-registry               --namespace "auspost-$ENVIRONMENT"               --docker-server="$JFROG_REGISTRY"               --docker-username="$JFROG_USER"               --docker-password="$JFROG_PASSWORD"               --dry-run=client -o yaml | kubectl apply -f -
+                kubectl create secret docker-registry jfrog-registry               --namespace "auspost-$ENVIRONMENT"               --docker-server="$JFROG_REGISTRY"               --docker-username="$JFROG_USER"               --docker-password="$JFROG_PASSWORD"               --dry-run=client -o yaml | kubectl apply -f -
+                
+                chmod +x scripts/deploy.sh
 
-            helm upgrade --install "$APP_NAME" ./helm/auspost-health               --namespace "auspost-$ENVIRONMENT"               --create-namespace               -f "./helm/auspost-health/values-$ENVIRONMENT.yaml"               --set image.repository="$JFROG_REGISTRY/$JFROG_PROJECT/$APP_NAME"               --set image.tag="$APP_VERSION"               --set-string "ingress.annotations.alb\.ingress\.kubernetes\.io/certificate-arn=$ACM_CERTIFICATE_ARN"               --atomic               --wait               --timeout 10m
-          '''
+                    ./scripts/deploy.sh "$ENVIRONMENT" "$APP_VERSION"
+                '''
+           }
         }
       }
     }
+    stage('Wait for ALB') {
+      steps {
+          sh '''
+              set -e
+              NAMESPACE="auspost-$ENVIRONMENT"
+              echo "Waiting for ALB hostname..."
+              for attempt in $(seq 1 60)
+              do
+                  ALB_HOSTNAME="$(
+                      kubectl get ingress "$APP_NAME" \
+                          --namespace "$NAMESPACE" \
+                          -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' \
+                          2>/dev/null || true
+                  )"
+                  if [ -n "$ALB_HOSTNAME" ]; then
+                      echo "ALB is ready:"
+                      echo "$ALB_HOSTNAME"
+                      exit 0
+                  fi
+                  echo "Attempt ${attempt}/60 - ALB not ready."
+                  sleep 10
+              done
+              echo "ERROR: ALB was not provisioned within 10 minutes."
+              kubectl describe ingress "$APP_NAME" \
+                  --namespace "$NAMESPACE" || true
+              exit 1
+          '''
+      }
+  }
+    stage('Configure Route53') {
+    steps {
+        withCredentials([
+            [$class: 'AmazonWebServicesCredentialsBinding',
+             credentialsId: 'aws-deploy-role',
+             accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+             secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']
+        ]) {
+            sh '''
+                set -e
+                export NAMESPACE="auspost-$ENVIRONMENT"
+                export INGRESS_NAME="$APP_NAME"
+                export DOMAIN_NAME="myauspost.com.au"
+                export HOSTED_ZONE_ID="$(
+                    terraform \
+                        -chdir=aws-iac/terraform \
+                        output \
+                        -raw route53_zone_id
+                )"
+                chmod +x aws-iac/scripts/set-route53-alb.sh
+                ./aws-iac/scripts/set-route53-alb.sh
+            '''
+        }
+    }
+  }
 
     stage('Validate') {
       steps {
         sh '''
           set -e
           kubectl rollout status deployment/"$APP_NAME"             -n "auspost-$ENVIRONMENT" --timeout=10m
-
           kubectl get pods             -n "auspost-$ENVIRONMENT"             -l "app.kubernetes.io/name=$APP_NAME"
-
           kubectl run health-check-"$BUILD_NUMBER"             -n "auspost-$ENVIRONMENT"             --rm -i --restart=Never             --image=curlimages/curl:8.16.0             --command --             curl -fsS "http://$APP_NAME/health"
         '''
       }

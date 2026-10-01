@@ -17,24 +17,34 @@ pipeline {
     JFROG_PROJECT = 'AusPostJrog'
     SNYK_ORG = 'AusPostSynkTenancy'
     SONARQUBE_SERVER = 'AusPostSonarQube'
+    JFROG_REGISTRY = 'jfrog.auspost.com'
   }
 
   stages {
-    stage('Checkout') {
-      steps { checkout scm }
+    stage('Checkout Application') {
+    steps {
+        dir('source') {
+            git branch: 'main',
+                url: 'https://github.com/ravishaggarwal/AusPost-Application.git'
+
+        }
     }
+}
 
     stage('Build') {
       steps {
-        dir('application') {
-          sh './gradlew clean assemble -x componentTest'
+        dir('source/application') {
+            sh '''
+                APP_VERSION="$APP_VERSION" \
+                ./gradlew clean assemble -x componentTest
+            '''
         }
       }
     }
 
     stage('Unit Tests') {
       steps {
-        dir('application') {
+        dir('source/application') {
           sh './gradlew test jacocoTestReport'
         }
       }
@@ -48,7 +58,7 @@ pipeline {
 
     stage('Component Tests') {
       steps {
-        dir('application') {
+        dir('source/application') {
           sh './gradlew componentTest'
         }
       }
@@ -63,7 +73,7 @@ pipeline {
       steps {
         withSonarQubeEnv("${SONARQUBE_SERVER}") {
           withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')]) {
-            dir('application') {
+            dir('source/application') {
               sh './gradlew test jacocoTestReport sonar -Dsonar.projectKey=auspost-health -Dsonar.projectName=auspost-health -Dsonar.token=$SONAR_TOKEN'
             }
           }
@@ -91,10 +101,13 @@ pipeline {
 
     stage('Docker Build') {
       steps {
-        sh '''
-          set -e
-          docker build --build-arg APP_VERSION="$APP_VERSION"             -f container/Dockerfile             -t "$JFROG_PROJECT/$APP_NAME:$APP_VERSION" .
-        '''
+            sh '''
+                docker build \
+                    --build-arg APP_VERSION="$APP_VERSION" \
+                    -f container/Dockerfile \
+                    -t "$JFROG_REGISTRY/$JFROG_PROJECT/$APP_NAME:$APP_VERSION" \
+                    .
+            '''
       }
     }
 
@@ -119,9 +132,9 @@ pipeline {
         )]) {
           sh '''
             set -e
-            echo "$JFROG_PASSWORD" | docker login jfrog.example.com -u "$JFROG_USER" --password-stdin
+            echo "$JFROG_PASSWORD" | docker login "$JFROG_REGISTRY" -u "$JFROG_USER" --password-stdin
             docker tag "$JFROG_PROJECT/$APP_NAME:$APP_VERSION"               "jfrog.example.com/$JFROG_PROJECT/$APP_NAME:$APP_VERSION"
-            docker push "jfrog.auspost.com/$JFROG_PROJECT/$APP_NAME:$APP_VERSION"
+            docker push "$JFROG_REGISTRY/$JFROG_PROJECT/$APP_NAME:$APP_VERSION"
           '''
         }
       }
