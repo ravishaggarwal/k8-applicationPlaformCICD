@@ -1,51 +1,131 @@
 pipeline {
-  agent { label 'kubernetes-deployer' }
-
-  parameters {
-    string(name: 'CLUSTER_NAME', defaultValue: 'auspost-eks')
-    string(name: 'AWS_REGION', defaultValue: 'ap-southeast-2')
-  }
-
-  stages {
-    stage('Checkout') {
-      steps { checkout scm }
+    agent { label 'kubernetes-deployer' }
+    options {
+        timestamps()
+        disableConcurrentBuilds()
+        skipDefaultCheckout(true)
     }
 
-    stage('Terraform Validate') {
-      steps {
-        dir('terraform') {
-          sh 'terraform fmt -check -recursive'
-          sh 'terraform init -backend=false'
-          sh 'terraform validate'
+    parameters {
+        string(name: 'IAC_BRANCH',defaultValue: 'main')
+        string(name: 'PLATFORM_BRANCH',defaultValue: 'main' )
+        string(name: 'CLUSTER_NAME',defaultValue: 'auspost-eks')
+        string(name: 'AWS_REGION',defaultValue: 'ap-southeast-2')
+    }
+
+    environment {
+        AWS_IAC_REPO ='https://github.com/ravishaggarwal/AusPost-aws-iac.git'
+        PLATFORM_REPO ='https://github.com/ravishaggarwal/AusPost-platformKubernetes.git'
+    }
+
+    stages {
+        stage('Checkout AWS IaC') {
+            steps {
+                dir('aws-iac') {
+                    git branch: params.IAC_BRANCH,
+                      url: env.AWS_IAC_REPO
+                }
+            }
         }
-      }
-    }
 
-    stage('Terraform Plan') {
-      steps {
-        dir('terraform') {
-          sh 'terraform plan -out=tfplan'
+        stage('Checkout Kubernetes Platform') {
+            steps {
+                dir('platform-kubernetes') {
+                    git branch: params.PLATFORM_BRANCH,
+                        url: env.PLATFORM_REPO
+                }
+            }
         }
-      }
-    }
-
-    stage('Apply') {
-      when { branch 'main' }
-      input { message 'Apply AWS platform changes?' }
-      steps {
-        dir('terraform') {
-          sh 'terraform apply -auto-approve tfplan'
+        stage('Terraform Validate') {
+            steps {
+                dir('aws-iac/terraform') {
+                    sh '''
+                        set -e
+                        terraform fmt -check -recursive
+                        terraform init
+                        terraform validate
+                    '''
+                }
+            }
         }
-      }
+        stage('Terraform Plan') {
+            steps {
+                dir('aws-iac/terraform') {
+                    sh '''
+                        set -e
+                        terraform plan \
+                            -out=tfplan \
+                            -var="cluster_name=$CLUSTER_NAME" \
+                            -var="aws_region=$AWS_REGION"
+                    '''
+                }
+            }
+        }
+        stage('Terraform Apply') {
+            input {
+                message 'Apply AWS platform changes?'
+            }
+            steps {
+                dir('aws-iac/terraform') {
+                    sh '''
+                        terraform apply -auto-approve tfplan
+                    '''
+                }
+            }
+        }
+        stage('Read Terraform Outputs') {
+            steps {
+                script {
+                    dir('aws-iac/terraform') {
+                        env.LBC_ROLE_ARN =
+                            sh(
+                                script: 'terraform output -raw aws_load_balancer_controller_role_arn',
+                                returnStdout: true
+                            ).trim()
+                        env.ACM_CERTIFICATE_ARN =
+                            sh(
+                                script: 'terraform output -raw acm_certificate_arn',
+                                returnStdout: true
+                            ).trim()
+                        env.ROUTE53_ZONE_ID =
+                            sh(
+                                script: 'terraform output -raw route53_zone_id',
+                                returnStdout: true
+                            ).trim()
+                    }
+                }
+            }
+        }
+        stage('Configure Kubernetes Access') {
+            steps {
+                sh '''
+                    aws eks update-kubeconfig  --region "$AWS_REGION" --name "$CLUSTER_NAME"
+                    kubectl get nodes
+                '''
+            }
+        }
+        stage('Bootstrap EKS Platform') {
+            steps {
+                dir('platform-kubernetes') {
+                    sh '''
+                        set -e
+                        chmod +x scripts/platform-bootstrap.sh
+                        export CLUSTER_NAME="$CLUSTER_NAME"
+                        export AWS_REGION="$AWS_REGION"
+                        export LBC_ROLE_ARN="$LBC_ROLE_ARN"
+                        ./scripts/platform-bootstrap.sh
+                    '''
+                }
+            }
+        }
+        stage('Validate Platform') {
+            steps {
+                sh '''
+                    kubectl get nodes
+                    kubectl get deployment aws-load-balancer-controller -n kube-system
+                    kubectl get pods -n vault
+                '''
+            }
+        }
     }
-
-    stage('Kubernetes Access') {
-      steps {
-        sh '''
-          aws eks update-kubeconfig --region "$AWS_REGION" --name "$CLUSTER_NAME"
-          kubectl get nodes
-        '''
-      }
-    }
-  }
 }
