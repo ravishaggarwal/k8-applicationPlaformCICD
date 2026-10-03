@@ -118,6 +118,39 @@ pipeline {
                 }
             }
         }
+
+        stage('Configure Vault Kubernetes Auth') {
+            steps {
+                withCredentials([
+                    string(
+                        credentialsId: 'vault-addr',
+                        variable: 'VAULT_ADDR'
+                    ),
+                    string(
+                        credentialsId: 'vault-bootstrap-token',
+                        variable: 'VAULT_TOKEN'
+                    )
+                ]) {
+                    dir('platform-kubernetes') {
+                        sh '''
+                            set -euo pipefail
+
+                            export EKS_CLUSTER_NAME="$CLUSTER_NAME"
+                            export AWS_REGION="$AWS_REGION"
+
+                            # Ensure kubectl targets the intended EKS cluster.
+                            aws eks update-kubeconfig \
+                                --name "$EKS_CLUSTER_NAME" \
+                                --region "$AWS_REGION"
+
+                            chmod +x vault/setup/kubernetes-Vault-auth.sh
+                            ./vault/setup/kubernetes-Vault-auth.sh
+                        '''
+                    }
+                }
+            }
+        }
+
         stage('Validate Platform') {
             steps {
                 sh '''
