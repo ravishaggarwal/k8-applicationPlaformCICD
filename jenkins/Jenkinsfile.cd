@@ -47,7 +47,7 @@ pipeline {
     stage('Checkout Kubernetes Platform') {
       steps {
           dir('platform') {
-              git branch: 'feature/us00xx-draftframework',
+              git branch: params.IAC_BRANCH,
                   url: 'https://github.com/ravishaggarwal/AusPost-platformKubernetes.git'
           }
         }

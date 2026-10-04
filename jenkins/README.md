@@ -41,10 +41,10 @@ For production, prefer Vault-backed dynamic credentials or your organization's s
 
 Create a seed job:
 
-1. New Item -> Freestyle project -> `seed`.
+1. New Item -> Freestyle project -> `secreateJenkinsJob.groovy`.
 2. Add the "Process Job DSLs" build step.
-3. Load `jenkins/job-dsl/seed.groovy` from SCM.
-4. Replace the repository URL in `seed.groovy`.
+3. Load `jenkins/job-dsl/screateJenkinsJob.groovy` from SCM.
+4. Replace the repository URL in `secreateJenkinsJob.groovy`.
 5. Run the seed.
 6. Configure the Git provider webhook to notify Jenkins on pushes to `main`.
 
