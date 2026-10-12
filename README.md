@@ -22,7 +22,7 @@ main push -> checkout application repo -> Gradle build
           -> JFrog push
           -> trigger CD with immutable image tag
 ```
-JFrog target: `AusPostJrog/auspost-health:<version>`. Requested Snyk tenancy/organisation name is `AusPostSynkTenancy`. The Snyk token must be retrieved from Vault rather than committed to Git.
+JFrog target: `app-k8-deploymentJrog/app-k8-deployment-health:<version>`. Requested Snyk tenancy/organisation name is `app-k8-deploymentSynkTenancy`. The Snyk token must be retrieved from Vault rather than committed to Git.
 
 ## CD flow
 ```text

@@ -9,13 +9,13 @@ pipeline {
     parameters {
         string(name: 'IAC_BRANCH',defaultValue: 'main')
         string(name: 'PLATFORM_BRANCH',defaultValue: 'main' )
-        string(name: 'CLUSTER_NAME',defaultValue: 'auspost-eks')
+        string(name: 'CLUSTER_NAME',defaultValue: 'app-k8-deployment-eks')
         string(name: 'AWS_REGION',defaultValue: 'ap-southeast-2')
     }
 
     environment {
-        AWS_IAC_REPO ='https://github.com/ravishaggarwal/AusPost-aws-iac.git'
-        PLATFORM_REPO ='https://github.com/ravishaggarwal/AusPost-platformKubernetes.git'
+        AWS_IAC_REPO ='https://github.com/ravishaggarwal/app-k8-deployment-aws-iac.git'
+        PLATFORM_REPO ='https://github.com/ravishaggarwal/app-k8-deployment-platformKubernetes.git'
     }
 
     stages {

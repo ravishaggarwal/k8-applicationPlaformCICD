@@ -28,13 +28,13 @@ acm-certificate-arn    Secret text
 The requested Snyk tenancy is represented by:
 
 ```text
-AusPostSynkTenancy
+app-k8-deploymentSynkTenancy
 ```
 
 The requested JFrog project path is represented by:
 
 ```text
-AusPostJrog/auspost-health
+app-k8-deploymentJrog/app-k8-deployment-health
 ```
 
 For production, prefer Vault-backed dynamic credentials or your organization's supported Jenkins/Vault credential provider rather than long-lived static credentials.

@@ -15,10 +15,10 @@ pipeline {
   }
 
   environment {
-    APP_NAME = 'auspost-health'
-    JFROG_REGISTRY = 'jfrog.auspost.com'
-    JFROG_PROJECT = 'AusPostJrog'
-    CLUSTER_NAME = 'auspost-eks'
+    APP_NAME = 'app-k8-deployment-health'
+    JFROG_REGISTRY = 'jfrog.app-k8-deployment.com'
+    JFROG_PROJECT = 'app-k8-deploymentJrog'
+    CLUSTER_NAME = 'app-k8-deployment-eks'
     AWS_REGION = 'ap-southeast-2'
     VAULT_ADDR = credentials('vault-addr')
   }
@@ -48,7 +48,7 @@ pipeline {
       steps {
           dir('platform') {
               git branch: params.IAC_BRANCH,
-                  url: 'https://github.com/ravishaggarwal/AusPost-platformKubernetes.git'
+                  url: 'https://github.com/ravishaggarwal/app-k8-deployment-platformKubernetes.git'
           }
         }
     }
@@ -57,7 +57,7 @@ pipeline {
         steps {
             dir('aws-iac') { 
                 git branch: params.IAC_BRANCH,
-                    url: 'https://github.com/ravishaggarwal/AusPost-aws-iac.git'
+                    url: 'https://github.com/ravishaggarwal/app-k8-deployment-aws-iac.git'
             }
         }
       }
@@ -81,9 +81,9 @@ pipeline {
 
                 aws eks update-kubeconfig --region "$AWS_REGION" --name "$CLUSTER_NAME"
 
-                kubectl create namespace "auspost-$ENVIRONMENT"               --dry-run=client -o yaml | kubectl apply -f -
+                kubectl create namespace "app-k8-deployment-$ENVIRONMENT"               --dry-run=client -o yaml | kubectl apply -f -
 
-                kubectl create secret docker-registry jfrog-registry               --namespace "auspost-$ENVIRONMENT"               --docker-server="$JFROG_REGISTRY"               --docker-username="$JFROG_USER"               --docker-password="$JFROG_PASSWORD"               --dry-run=client -o yaml | kubectl apply -f -
+                kubectl create secret docker-registry jfrog-registry               --namespace "app-k8-deployment-$ENVIRONMENT"               --docker-server="$JFROG_REGISTRY"               --docker-username="$JFROG_USER"               --docker-password="$JFROG_PASSWORD"               --dry-run=client -o yaml | kubectl apply -f -
                 
                 chmod +x scripts/deploy.sh
 
@@ -97,7 +97,7 @@ pipeline {
       steps {
           sh '''
               set -e
-              NAMESPACE="auspost-$ENVIRONMENT"
+              NAMESPACE="app-k8-deployment-$ENVIRONMENT"
               echo "Waiting for ALB hostname..."
               for attempt in $(seq 1 60)
               do
@@ -132,9 +132,9 @@ pipeline {
         ]) {
             sh '''
                 set -e
-                export NAMESPACE="auspost-$ENVIRONMENT"
+                export NAMESPACE="app-k8-deployment-$ENVIRONMENT"
                 export INGRESS_NAME="$APP_NAME"
-                export DOMAIN_NAME="myauspost.com.au"
+                export DOMAIN_NAME="myapp-k8-deployment.com.au"
                 export HOSTED_ZONE_ID="$(
                     terraform \
                         -chdir=aws-iac/terraform \
@@ -152,9 +152,9 @@ pipeline {
       steps {
         sh '''
           set -e
-          kubectl rollout status deployment/"$APP_NAME"             -n "auspost-$ENVIRONMENT" --timeout=10m
-          kubectl get pods             -n "auspost-$ENVIRONMENT"             -l "app.kubernetes.io/name=$APP_NAME"
-          kubectl run health-check-"$BUILD_NUMBER"             -n "auspost-$ENVIRONMENT"             --rm -i --restart=Never             --image=curlimages/curl:8.16.0             --command --             curl -fsS "http://$APP_NAME/health"
+          kubectl rollout status deployment/"$APP_NAME"             -n "app-k8-deployment-$ENVIRONMENT" --timeout=10m
+          kubectl get pods             -n "app-k8-deployment-$ENVIRONMENT"             -l "app.kubernetes.io/name=$APP_NAME"
+          kubectl run health-check-"$BUILD_NUMBER"             -n "app-k8-deployment-$ENVIRONMENT"             --rm -i --restart=Never             --image=curlimages/curl:8.16.0             --command --             curl -fsS "http://$APP_NAME/health"
         '''
       }
     }
@@ -163,7 +163,7 @@ pipeline {
   post {
     failure {
       sh '''
-        kubectl rollout undo deployment/"$APP_NAME"           -n "auspost-$ENVIRONMENT" || true
+        kubectl rollout undo deployment/"$APP_NAME"           -n "app-k8-deployment-$ENVIRONMENT" || true
       '''
     }
   }

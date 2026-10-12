@@ -13,11 +13,11 @@ pipeline {
   }
 
   environment {
-    APP_NAME = 'auspost-health'
-    JFROG_PROJECT = 'AusPostJrog'
-    SNYK_ORG = 'AusPostSynkTenancy'
-    SONARQUBE_SERVER = 'AusPostSonarQube'
-    JFROG_REGISTRY = 'jfrog.auspost.com'
+    APP_NAME = 'app-k8-deployment-health'
+    JFROG_PROJECT = 'app-k8-deploymentJrog'
+    SNYK_ORG = 'app-k8-deploymentSynkTenancy'
+    SONARQUBE_SERVER = 'app-k8-deploymentSonarQube'
+    JFROG_REGISTRY = 'jfrog.app-k8-deployment.com'
   }
 
   stages {
@@ -25,7 +25,7 @@ pipeline {
     steps {
         dir('source') {
             git branch: 'main',
-                url: 'https://github.com/ravishaggarwal/AusPost-Application.git'
+                url: 'https://github.com/ravishaggarwal/app-k8-deployment-Application.git'
 
         }
     }
@@ -74,7 +74,7 @@ pipeline {
         withSonarQubeEnv("${SONARQUBE_SERVER}") {
           withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')]) {
             dir('source/application') {
-              sh './gradlew test jacocoTestReport sonar -Dsonar.projectKey=auspost-health -Dsonar.projectName=auspost-health -Dsonar.token=$SONAR_TOKEN'
+              sh './gradlew test jacocoTestReport sonar -Dsonar.projectKey=app-k8-deployment-health -Dsonar.projectName=app-k8-deployment-health -Dsonar.token=$SONAR_TOKEN'
             }
           }
         }
@@ -144,7 +144,7 @@ pipeline {
       when { branch 'main' }
       steps {
         withCredentials([string(credentialsId: 'acm-certificate-arn', variable: 'ACM_CERTIFICATE_ARN')]) {
-          build job: 'auspost-health-cd',
+          build job: 'app-k8-deployment-health-cd',
             wait: false,
             parameters: [
               string(name: 'ENVIRONMENT', value: 'dev'),
