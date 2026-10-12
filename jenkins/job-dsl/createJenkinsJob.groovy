@@ -1,17 +1,14 @@
-def cicdRepo = 'https://github.com/ravishaggarwal/AusPost-applicationPlaformCICD.git'
+def cicdRepo = 'https://github.com/ravishaggarwal/app-k8-deployment-applicationPlaformCICD.git'
 def branch = 'main'
 
-pipelineJob('auspost-health-ci') {
-    description('CI: Build/test/scan AusPost Health and publish image to JFrog.')
-
+pipelineJob('app-k8-deployment-health-ci') {
+    description('CI: Build/test/scan app-k8-deployment Health and publish image to JFrog.')
     properties {
         disableConcurrentBuilds()
     }
-
     triggers {
         githubPush()
     }
-
     definition {
         cpsScm {
             scm {
@@ -22,16 +19,14 @@ pipelineJob('auspost-health-ci') {
                     branch("${branch}")
                 }
             }
-
             scriptPath('jenkins/Jenkinsfile.ci')
             lightweight(true)
         }
     }
 }
 
-
-pipelineJob('auspost-health-cd') {
-    description('CD: Deploy AusPost Health to EKS using Helm.')
+pipelineJob('app-k8-deployment-health-cd') {
+    description('CD: Deploy app-k8-deployment Health to EKS using Helm.')
 
     definition {
         cpsScm {
@@ -43,17 +38,14 @@ pipelineJob('auspost-health-cd') {
                     branch("${branch}")
                 }
             }
-
             scriptPath('jenkins/Jenkinsfile.cd')
             lightweight(true)
         }
     }
 }
 
-
-pipelineJob('auspost-platform-prepare') {
+pipelineJob('app-k8-deployment-platform-prepare') {
     description('Platform: Terraform AWS infrastructure and bootstrap EKS platform components.')
-
     definition {
         cpsScm {
             scm {
@@ -64,8 +56,7 @@ pipelineJob('auspost-platform-prepare') {
                     branch("${branch}")
                 }
             }
-
-            scriptPath('jenkins/Jenkinsfile.platform')
+           scriptPath('jenkins/Jenkinsfile.platform')
             lightweight(true)
         }
     }
