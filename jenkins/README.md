@@ -41,11 +41,11 @@ For production, prefer Vault-backed dynamic credentials or your organization's s
 
 Create a seed job:
 
-1. New Item -> Freestyle project -> `secreateJenkinsJob.groovy`.
+1. New Item -> Freestyle project -> `createJenkinsJob.groovy`.
 2. Add the "Process Job DSLs" build step.
-3. Load `jenkins/job-dsl/screateJenkinsJob.groovy` from SCM.
-4. Replace the repository URL in `secreateJenkinsJob.groovy`.
-5. Run the seed.
+3. Load `jenkins/job-dsl/createJenkinsJob.groovy` from SCM.
+4. Replace the repository URL in `createJenkinsJob.groovy`.
+5. Run the createJenkinsJob.
 6. Configure the Git provider webhook to notify Jenkins on pushes to `main`.
 
 The Job DSL generates the CI/CD/platform Pipeline jobs. Jenkins Job DSL is the job-generation mechanism; the actual build logic lives in Jenkinsfiles.
